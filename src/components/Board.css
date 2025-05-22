@@ -1,0 +1,29 @@
+.board {
+  display: flex;
+  justify-content: center;
+  margin-top: 20px;
+}
+
+.column {
+  display: flex;
+  flex-direction: column-reverse;
+  margin: 4px;
+  cursor: pointer;
+}
+
+.cell {
+  width: 60px;
+  height: 60px;
+  margin: 2px;
+  border-radius: 50%;
+  background-color: #eee;
+  border: 2px solid #555;
+}
+
+.cell.red {
+  background-color: red;
+}
+
+.cell.yellow {
+  background-color: gold;
+}
