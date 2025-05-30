@@ -1,5 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import Board from './components/Board';
+import Auth from './components/Auth';
+import Leaderboard from './components/Leaderboard';
+import { supabase } from './lib/supabase';
+import { calculateEloRating } from './utils/elo';
 import './App.css';
 
 const NUM_ROWS = 6;
@@ -7,8 +11,11 @@ const NUM_COLS = 7;
 const EMPTY = null;
 const PLAYER = 'yellow';
 const AI = 'red';
+const AI_RATING = 1200; // Base AI rating
 
 function App() {
+  console.log('App component rendering');
+
   const [board, setBoard] = useState(
     Array(NUM_COLS).fill(EMPTY).map(() => Array(NUM_ROWS).fill(EMPTY))
   );
@@ -16,6 +23,18 @@ function App() {
   const [winner, setWinner] = useState(null);
   const [gameMode, setGameMode] = useState(null); // null, '1-player', or '2-player'
   const [isAiThinking, setIsAiThinking] = useState(false);
+  const [user, setUser] = useState(null);
+
+  useEffect(() => {
+    console.log('Checking for existing user session');
+    const savedUser = localStorage.getItem('connect4_user');
+    if (savedUser) {
+      console.log('Found saved user:', savedUser);
+      setUser(JSON.parse(savedUser));
+    } else {
+      console.log('No saved user found');
+    }
+  }, []);
 
   // Evaluate board state for minimax
   const evaluateBoard = (board, depth) => {
@@ -29,17 +48,17 @@ function App() {
     // Evaluate board position
     let score = 0;
     
-    // Prefer center column
+    // Prefer center column (weighted by height)
     for (let r = 0; r < NUM_ROWS; r++) {
-      if (board[3][r] === AI) score += 3;
-      else if (board[3][r] === PLAYER) score -= 3;
+      if (board[3][r] === AI) score += 3 * (r + 1);
+      else if (board[3][r] === PLAYER) score -= 3 * (r + 1);
     }
 
     // Count potential winning positions
     for (let c = 0; c < NUM_COLS - 3; c++) {
       for (let r = 0; r < NUM_ROWS; r++) {
         let sequence = [board[c][r], board[c+1][r], board[c+2][r], board[c+3][r]];
-        score += evaluateSequence(sequence);
+        score += evaluateSequence(sequence, r);
       }
     }
 
@@ -47,7 +66,7 @@ function App() {
     for (let c = 0; c < NUM_COLS; c++) {
       for (let r = 0; r < NUM_ROWS - 3; r++) {
         let sequence = [board[c][r], board[c][r+1], board[c][r+2], board[c][r+3]];
-        score += evaluateSequence(sequence);
+        score += evaluateSequence(sequence, r) * 1.2; // Vertical threats are more immediate
       }
     }
 
@@ -56,8 +75,8 @@ function App() {
       for (let r = 0; r < NUM_ROWS - 3; r++) {
         let sequence1 = [board[c][r], board[c+1][r+1], board[c+2][r+2], board[c+3][r+3]];
         let sequence2 = [board[c][r+3], board[c+1][r+2], board[c+2][r+1], board[c+3][r]];
-        score += evaluateSequence(sequence1);
-        score += evaluateSequence(sequence2);
+        score += evaluateSequence(sequence1, r);
+        score += evaluateSequence(sequence2, r + 3);
       }
     }
 
@@ -65,15 +84,23 @@ function App() {
   };
 
   // Helper function to evaluate a sequence of 4 positions
-  const evaluateSequence = (sequence) => {
+  const evaluateSequence = (sequence, row) => {
     const aiCount = sequence.filter(cell => cell === AI).length;
     const playerCount = sequence.filter(cell => cell === PLAYER).length;
     const emptyCount = sequence.filter(cell => cell === EMPTY).length;
 
-    if (aiCount === 3 && emptyCount === 1) return 50;
-    if (playerCount === 3 && emptyCount === 1) return -50;
-    if (aiCount === 2 && emptyCount === 2) return 10;
-    if (playerCount === 2 && emptyCount === 2) return -10;
+    // If both players have pieces in the sequence, it's not winnable
+    if (aiCount > 0 && playerCount > 0) return 0;
+
+    // Weight scores based on vertical position (higher rows are worth more)
+    const positionMultiplier = (row + 1) / NUM_ROWS;
+
+    if (aiCount === 3 && emptyCount === 1) return 100 * positionMultiplier;
+    if (playerCount === 3 && emptyCount === 1) return -120 * positionMultiplier; // Prioritize blocking opponent's wins
+    if (aiCount === 2 && emptyCount === 2) return 20 * positionMultiplier;
+    if (playerCount === 2 && emptyCount === 2) return -25 * positionMultiplier;
+    if (aiCount === 1 && emptyCount === 3) return 5 * positionMultiplier;
+    if (playerCount === 1 && emptyCount === 3) return -5 * positionMultiplier;
 
     return 0;
   };
@@ -146,7 +173,7 @@ function App() {
 
   // AI move
   const makeAiMove = () => {
-    const depth = 5; // Slightly reduced depth for faster response
+    const depth = 7; // Increased depth for better lookahead
     const result = minimax(board, depth, -Infinity, Infinity, true);
     
     if (result.column !== null) {
@@ -230,6 +257,85 @@ function App() {
     return false;
   };
 
+  const checkDraw = (board) => {
+    // Check if all columns are full
+    return board.every(column => column.every(cell => cell !== EMPTY));
+  };
+
+  const handleGameEnd = async (winner) => {
+    setWinner(winner);
+    
+    if (gameMode === '1-player' && user && winner === PLAYER) {
+      try {
+        // Calculate new rating
+        const newRating = calculateEloRating(user.elo_rating, AI_RATING, true);
+        
+        // Update user stats in Supabase
+        const { data, error } = await supabase
+          .from('players')
+          .update({
+            elo_rating: newRating,
+            games_played: user.games_played + 1,
+            games_won: user.games_won + 1
+          })
+          .eq('username', user.username)
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        // Update local user data
+        const updatedUser = { ...user, ...data };
+        localStorage.setItem('connect4_user', JSON.stringify(updatedUser));
+        setUser(updatedUser);
+      } catch (error) {
+        console.error('Error updating player stats:', error);
+      }
+    } else if (gameMode === '1-player' && user && winner !== 'draw') {
+      // Update games played even on loss
+      try {
+        const { data, error } = await supabase
+          .from('players')
+          .update({
+            games_played: user.games_played + 1
+          })
+          .eq('username', user.username)
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        // Update local user data
+        const updatedUser = { ...user, ...data };
+        localStorage.setItem('connect4_user', JSON.stringify(updatedUser));
+        setUser(updatedUser);
+      } catch (error) {
+        console.error('Error updating player stats:', error);
+      }
+    } else if (gameMode === '1-player' && user && winner === 'draw') {
+      // Update games played on draw
+      try {
+        const { data, error } = await supabase
+          .from('players')
+          .update({
+            games_played: user.games_played + 1
+          })
+          .eq('username', user.username)
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        // Update local user data
+        const updatedUser = { ...user, ...data };
+        localStorage.setItem('connect4_user', JSON.stringify(updatedUser));
+        setUser(updatedUser);
+      } catch (error) {
+        console.error('Error updating player stats:', error);
+      }
+    }
+  };
+
   const handleColumnClick = (colIndex) => {
     if (winner || isAiThinking) return;
     if (gameMode === '1-player' && currentPlayer === AI) return;
@@ -244,7 +350,9 @@ function App() {
     setBoard(newBoard);
 
     if (checkWin(newBoard, colIndex, rowIndex, currentPlayer)) {
-      setWinner(currentPlayer);
+      handleGameEnd(currentPlayer);
+    } else if (checkDraw(newBoard)) {
+      handleGameEnd('draw');
     } else {
       setCurrentPlayer(currentPlayer === AI ? PLAYER : AI);
     }
@@ -262,13 +370,47 @@ function App() {
     resetGame();
   };
 
+  const handleSignOut = () => {
+    localStorage.removeItem('connect4_user');
+    setUser(null);
+    setGameMode(null);
+    resetGame();
+  };
+
+  console.log('Current state:', { user, gameMode, winner, currentPlayer });
+
+  if (!user) {
+    console.log('Rendering Auth component');
+    return <Auth onSignIn={setUser} />;
+  }
+
   if (!gameMode) {
+    console.log('Rendering game mode selection');
     return (
       <div className="App">
-        <h1>Connect 4 Coach</h1>
+        <div className="user-info">
+          <span>Welcome, {user.username}!</span>
+          <button
+            onClick={handleSignOut}
+          >
+            Sign Out
+          </button>
+        </div>
+        <h1 className="text-4xl font-bold mb-8 text-white text-center">
+          Connect 4 Coach
+        </h1>
+        <Leaderboard />
         <div className="mode-selection">
-          <button onClick={() => startGame('1-player')}>Play vs AI</button>
-          <button onClick={() => startGame('2-player')}>2 Players</button>
+          <button
+            onClick={() => startGame('1-player')}
+          >
+            Play vs AI
+          </button>
+          <button
+            onClick={() => startGame('2-player')}
+          >
+            2 Players
+          </button>
         </div>
       </div>
     );
@@ -276,35 +418,45 @@ function App() {
 
   return (
     <div className="App">
-      <h1>Connect 4 Coach</h1>
-      <div className="game-status">
-        {winner ? (
-          <div className="winner-message">
-            <span className={winner}>
-              {winner === AI ? 'AI' : 'Player'} {winner} wins!
-            </span>
-            <button onClick={resetGame}>Play Again</button>
-          </div>
-        ) : (
-          <div className="turn-indicator">
-            {isAiThinking ? (
-              <div className="ai-thinking">
-                AI is thinking...
-              </div>
-            ) : (
-              <span className={currentPlayer}>
-                {gameMode === '1-player' && currentPlayer === AI ? 
-                  'AI\'s turn' : 
-                  `Player ${currentPlayer}'s turn`}
-              </span>
-            )}
-          </div>
-        )}
+      <div className="user-info">
+        <span>Playing as: {user.username}</span>
+        <button
+          onClick={() => setGameMode(null)}
+        >
+          Back to Menu
+        </button>
       </div>
-      <Board board={board} onColumnClick={handleColumnClick} />
-      <button className="change-mode" onClick={() => setGameMode(null)}>
-        Change Game Mode
-      </button>
+      <div className="game-container">
+        <div className="game-status">
+          {winner ? (
+            <div className="winner-message">
+              {winner === 'draw' ? (
+                <span className="draw">It's a Draw!</span>
+              ) : (
+                <span className={winner}>
+                  {winner === AI ? 'AI' : 'Player'} {winner} wins!
+                </span>
+              )}
+              <button onClick={resetGame}>Play Again</button>
+            </div>
+          ) : (
+            <div className="turn-indicator">
+              {isAiThinking ? (
+                <div className="ai-thinking">
+                  AI is thinking...
+                </div>
+              ) : (
+                <span className={currentPlayer}>
+                  {gameMode === '1-player' && currentPlayer === AI ? 
+                    'AI\'s turn' : 
+                    `Player ${currentPlayer}'s turn`}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+        <Board board={board} onColumnClick={handleColumnClick} />
+      </div>
     </div>
   );
 }
