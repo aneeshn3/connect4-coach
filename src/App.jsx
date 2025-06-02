@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Board from './components/Board';
 import Auth from './components/Auth';
 import Leaderboard from './components/Leaderboard';
+import WinProbability from './components/WinProbability';
 import { supabase } from './lib/supabase';
 import { calculateEloRating } from './utils/elo';
 import './App.css';
@@ -12,6 +13,13 @@ const EMPTY = null;
 const PLAYER = 'yellow';
 const AI = 'red';
 const AI_RATING = 1200; // Base AI rating
+
+// Convert evaluation score to probability
+const calculateWinProbability = (evaluation) => {
+  // Use sigmoid function to convert score to probability
+  const k = 0.001; // Scaling factor to smooth out the probability curve
+  return 1 / (1 + Math.exp(-k * evaluation));
+};
 
 function App() {
   console.log('App component rendering');
@@ -434,7 +442,7 @@ function App() {
                 <span className="draw">It's a Draw!</span>
               ) : (
                 <span className={winner}>
-                  {winner === AI ? 'AI' : 'Player'} {winner} wins!
+                  {winner === AI ? 'AI' : 'Player'} wins!
                 </span>
               )}
               <button onClick={resetGame}>Play Again</button>
@@ -455,7 +463,12 @@ function App() {
             </div>
           )}
         </div>
-        <Board board={board} onColumnClick={handleColumnClick} />
+        <div className="game-board-container">
+          <Board board={board} onColumnClick={handleColumnClick} />
+          {gameMode === '1-player' && !winner && (
+            <WinProbability probability={calculateWinProbability(evaluateBoard(board, 0))} />
+          )}
+        </div>
       </div>
     </div>
   );

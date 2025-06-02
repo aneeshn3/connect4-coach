@@ -64,6 +64,13 @@
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+.game-board-container {
+  display: flex;
+  align-items: flex-start;
+  gap: 24px;
+  justify-content: center;
+}
+
 .board {
   display: inline-grid;
   grid-template-columns: repeat(7, 1fr);
