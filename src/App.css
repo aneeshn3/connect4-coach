@@ -223,6 +223,59 @@
   box-shadow: 0 6px 16px rgba(5, 150, 105, 0.5);
 }
 
+.mode-selection button.diagnostic-btn {
+  background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);
+  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.4);
+}
+
+.mode-selection button.diagnostic-btn:hover {
+  box-shadow: 0 6px 16px rgba(139, 92, 246, 0.5);
+}
+
+.diagnostic-score {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 1.5rem;
+  border-radius: 12px;
+  margin: 1rem 0;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.diagnostic-score h3 {
+  color: #8b5cf6;
+  font-size: 1.5rem;
+  margin-bottom: 1rem;
+  text-shadow: 0 0 10px rgba(139, 92, 246, 0.4);
+}
+
+.diagnostic-score p {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 1.1rem;
+  margin: 0.5rem 0;
+}
+
+/* Add styles for live diagnostic stats */
+.diagnostic-score.live-stats {
+  background: rgba(139, 92, 246, 0.1);
+  padding: 1rem;
+  border-radius: 8px;
+  margin-top: 1rem;
+  backdrop-filter: blur(5px);
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  font-size: 0.9rem;
+}
+
+.diagnostic-score.live-stats p {
+  font-size: 0.9rem;
+  margin: 0.3rem 0;
+}
+
+.diagnostic-score.live-stats p:first-child {
+  color: #8b5cf6;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
 .user-info {
   width: 100%;
   max-width: 1200px;
@@ -300,7 +353,7 @@
 .leaderboard h2 {
   color: white;
   font-size: 2rem;
-  margin-bottom: 1.5rem;
+  margin-bottom: 2rem;
   text-align: center;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
@@ -330,4 +383,17 @@
 .leaderboard tr:hover td {
   background: rgba(255, 255, 255, 0.1);
   transform: translateX(4px);
+}
+
+.leaderboard td:first-child {
+  border-top-left-radius: 8px;
+  border-bottom-left-radius: 8px;
+  font-weight: 600;
+  color: #8b5cf6;
+}
+
+.leaderboard td:last-child {
+  border-top-right-radius: 8px;
+  border-bottom-right-radius: 8px;
+  font-weight: 600;
 }

@@ -1,24 +1,40 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 
-const Leaderboard = () => {
-  const [topPlayers, setTopPlayers] = useState([]);
+const Leaderboard = ({ refreshKey }) => {
+  const [topDiagnosticPlayers, setTopDiagnosticPlayers] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchTopPlayers();
-  }, []);
+    console.log('Leaderboard refreshKey changed:', refreshKey);
+    fetchLeaderboard();
+  }, [refreshKey]); // Re-fetch when refreshKey changes
 
-  const fetchTopPlayers = async () => {
+  const fetchLeaderboard = async () => {
     try {
-      const { data, error } = await supabase
+      console.log('Fetching leaderboard data...');
+      // Fetch players with best diagnostic scores
+      const { data: diagnosticData, error: diagnosticError } = await supabase
         .from('players')
-        .select('username, elo_rating, games_won, games_played')
-        .order('elo_rating', { ascending: false })
-        .limit(5);
+        .select('username, best_diagnostic_score')
+        .not('best_diagnostic_score', 'is', null) // Only get players who have played diagnostic games
+        .order('best_diagnostic_score', { ascending: false })
+        .limit(10);
 
-      if (error) throw error;
-      setTopPlayers(data);
+      if (diagnosticError) {
+        console.error('Error fetching diagnostic data:', diagnosticError);
+        throw diagnosticError;
+      }
+
+      console.log('Received leaderboard data:', diagnosticData);
+
+      const mappedData = diagnosticData.map(player => ({
+        username: player.username,
+        score: player.best_diagnostic_score
+      }));
+
+      console.log('Mapped leaderboard data:', mappedData);
+      setTopDiagnosticPlayers(mappedData);
     } catch (error) {
       console.error('Error fetching leaderboard:', error);
     } finally {
@@ -28,41 +44,37 @@ const Leaderboard = () => {
 
   if (loading) {
     return <div className="leaderboard">
-      <h2>Top Players</h2>
+      <h2>Leaderboard</h2>
       <div className="text-center text-white/70">Loading leaderboard...</div>
     </div>;
   }
 
   return (
     <div className="leaderboard">
-      <h2>Top Players</h2>
-      <div>
-        <table>
-          <thead>
-            <tr>
-              <th>Rank</th>
-              <th>Player</th>
-              <th>Rating</th>
-              <th>W/L</th>
+      <h2>Diagnostic Leaderboard</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Rank</th>
+            <th>Player</th>
+            <th>Best Score</th>
+          </tr>
+        </thead>
+        <tbody>
+          {topDiagnosticPlayers.map((player, index) => (
+            <tr key={player.username}>
+              <td>{index + 1}</td>
+              <td>{player.username}</td>
+              <td>{player.score}</td>
             </tr>
-          </thead>
-          <tbody>
-            {topPlayers.map((player, index) => (
-              <tr key={player.username}>
-                <td>{index + 1}</td>
-                <td>{player.username}</td>
-                <td>{player.elo_rating}</td>
-                <td>{player.games_won}/{player.games_played}</td>
-              </tr>
-            ))}
-            {topPlayers.length === 0 && (
-              <tr>
-                <td colSpan={4}>No players yet</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+          ))}
+          {topDiagnosticPlayers.length === 0 && (
+            <tr>
+              <td colSpan={3}>No diagnostic scores yet</td>
+            </tr>
+          )}
+        </tbody>
+      </table>
     </div>
   );
 };

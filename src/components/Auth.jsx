@@ -43,7 +43,8 @@ const Auth = ({ onSignIn }) => {
               password: password, // In a real app, you should hash the password
               elo_rating: 1000,
               games_played: 0,
-              games_won: 0
+              games_won: 0,
+              best_diagnostic_score: null
             }
           ])
           .select()
